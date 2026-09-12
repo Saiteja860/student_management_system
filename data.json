@@ -1,0 +1,19 @@
+{
+  "nextStudentId": 4,
+  "students": [
+    { "id": 1, "name": "Ananya Rao", "roll": "21CSE01", "cls": "3rd Year CSE - A", "contact": "9876543210", "email": "ananya.rao@example.com" },
+    { "id": 2, "name": "Vikram Shetty", "roll": "21CSE02", "cls": "3rd Year CSE - A", "contact": "9876543211", "email": "vikram.shetty@example.com" },
+    { "id": 3, "name": "Priya Menon", "roll": "21CSE03", "cls": "3rd Year CSE - B", "contact": "9876543212", "email": "priya.menon@example.com" }
+  ],
+  "attendance": {},
+  "marks": {
+    "1": { "Data Structures": 82, "Operating Systems": 74 },
+    "2": { "Data Structures": 65, "Operating Systems": 70 }
+  },
+  "fees": {
+    "1": { "amount": 45000, "paid": 45000, "due": "2026-08-01" },
+    "2": { "amount": 45000, "paid": 20000, "due": "2026-08-01" },
+    "3": { "amount": 45000, "paid": 0, "due": "2026-09-01" }
+  },
+  "subjects": ["Data Structures", "Operating Systems", "Computer Networks", "DBMS"]
+}
