@@ -1,290 +1,234 @@
 /*!
- * http-errors
- * Copyright(c) 2014 Jonathan Ong
- * Copyright(c) 2016 Douglas Christopher Wilson
+ * on-finished
+ * Copyright(c) 2013 Jonathan Ong
+ * Copyright(c) 2014 Douglas Christopher Wilson
  * MIT Licensed
  */
 
 'use strict'
 
 /**
- * Module dependencies.
- * @private
- */
-
-var deprecate = require('depd')('http-errors')
-var setPrototypeOf = require('setprototypeof')
-var statuses = require('statuses')
-var inherits = require('inherits')
-var toIdentifier = require('toidentifier')
-
-/**
  * Module exports.
  * @public
  */
 
-module.exports = createError
-module.exports.HttpError = createHttpErrorConstructor()
-module.exports.isHttpError = createIsHttpErrorFunction(module.exports.HttpError)
-
-// Populate exports for all constructors
-populateConstructorExports(module.exports, statuses.codes, module.exports.HttpError)
+module.exports = onFinished
+module.exports.isFinished = isFinished
 
 /**
- * Get the code class of a status code.
+ * Module dependencies.
  * @private
  */
 
-function codeClass (status) {
-  return Number(String(status).charAt(0) + '00')
-}
+var asyncHooks = tryRequireAsyncHooks()
+var first = require('ee-first')
 
 /**
- * Create a new HTTP Error.
+ * Variables.
+ * @private
+ */
+
+/* istanbul ignore next */
+var defer = typeof setImmediate === 'function'
+  ? setImmediate
+  : function (fn) { process.nextTick(fn.bind.apply(fn, arguments)) }
+
+/**
+ * Invoke callback when the response has finished, useful for
+ * cleaning up resources afterwards.
  *
- * @returns {Error}
+ * @param {object} msg
+ * @param {function} listener
+ * @return {object}
  * @public
  */
 
-function createError () {
-  // so much arity going on ~_~
-  var err
-  var msg
-  var status = 500
-  var props = {}
-  for (var i = 0; i < arguments.length; i++) {
-    var arg = arguments[i]
-    var type = typeof arg
-    if (type === 'object' && arg instanceof Error) {
-      err = arg
-      status = err.status || err.statusCode || status
-    } else if (type === 'number' && i === 0) {
-      status = arg
-    } else if (type === 'string') {
-      msg = arg
-    } else if (type === 'object') {
-      props = arg
-    } else {
-      throw new TypeError('argument #' + (i + 1) + ' unsupported type ' + type)
-    }
+function onFinished (msg, listener) {
+  if (isFinished(msg) !== false) {
+    defer(listener, null, msg)
+    return msg
   }
 
-  if (typeof status === 'number' && (status < 400 || status >= 600)) {
-    deprecate('non-error status code; use only 4xx or 5xx status codes')
-  }
+  // attach the listener to the message
+  attachListener(msg, wrap(listener))
 
-  if (typeof status !== 'number' ||
-    (!statuses.message[status] && (status < 400 || status >= 600))) {
-    status = 500
-  }
-
-  // constructor
-  var HttpError = createError[status] || createError[codeClass(status)]
-
-  if (!err) {
-    // create error
-    err = HttpError
-      ? new HttpError(msg)
-      : new Error(msg || statuses.message[status])
-    Error.captureStackTrace(err, createError)
-  }
-
-  if (!HttpError || !(err instanceof HttpError) || err.status !== status) {
-    // add properties to generic error
-    err.expose = status < 500
-    err.status = err.statusCode = status
-  }
-
-  for (var key in props) {
-    if (key !== 'status' && key !== 'statusCode') {
-      err[key] = props[key]
-    }
-  }
-
-  return err
+  return msg
 }
 
 /**
- * Create HTTP error abstract base class.
- * @private
- */
-
-function createHttpErrorConstructor () {
-  function HttpError () {
-    throw new TypeError('cannot construct abstract class')
-  }
-
-  inherits(HttpError, Error)
-
-  return HttpError
-}
-
-/**
- * Create a constructor for a client error.
- * @private
- */
-
-function createClientErrorConstructor (HttpError, name, code) {
-  var className = toClassName(name)
-
-  function ClientError (message) {
-    // create the error object
-    var msg = message != null ? message : statuses.message[code]
-    var err = new Error(msg)
-
-    // capture a stack trace to the construction point
-    Error.captureStackTrace(err, ClientError)
-
-    // adjust the [[Prototype]]
-    setPrototypeOf(err, ClientError.prototype)
-
-    // redefine the error message
-    Object.defineProperty(err, 'message', {
-      enumerable: true,
-      configurable: true,
-      value: msg,
-      writable: true
-    })
-
-    // redefine the error name
-    Object.defineProperty(err, 'name', {
-      enumerable: false,
-      configurable: true,
-      value: className,
-      writable: true
-    })
-
-    return err
-  }
-
-  inherits(ClientError, HttpError)
-  nameFunc(ClientError, className)
-
-  ClientError.prototype.status = code
-  ClientError.prototype.statusCode = code
-  ClientError.prototype.expose = true
-
-  return ClientError
-}
-
-/**
- * Create function to test is a value is a HttpError.
- * @private
- */
-
-function createIsHttpErrorFunction (HttpError) {
-  return function isHttpError (val) {
-    if (!val || typeof val !== 'object') {
-      return false
-    }
-
-    if (val instanceof HttpError) {
-      return true
-    }
-
-    return val instanceof Error &&
-      typeof val.expose === 'boolean' &&
-      typeof val.statusCode === 'number' && val.status === val.statusCode
-  }
-}
-
-/**
- * Create a constructor for a server error.
- * @private
- */
-
-function createServerErrorConstructor (HttpError, name, code) {
-  var className = toClassName(name)
-
-  function ServerError (message) {
-    // create the error object
-    var msg = message != null ? message : statuses.message[code]
-    var err = new Error(msg)
-
-    // capture a stack trace to the construction point
-    Error.captureStackTrace(err, ServerError)
-
-    // adjust the [[Prototype]]
-    setPrototypeOf(err, ServerError.prototype)
-
-    // redefine the error message
-    Object.defineProperty(err, 'message', {
-      enumerable: true,
-      configurable: true,
-      value: msg,
-      writable: true
-    })
-
-    // redefine the error name
-    Object.defineProperty(err, 'name', {
-      enumerable: false,
-      configurable: true,
-      value: className,
-      writable: true
-    })
-
-    return err
-  }
-
-  inherits(ServerError, HttpError)
-  nameFunc(ServerError, className)
-
-  ServerError.prototype.status = code
-  ServerError.prototype.statusCode = code
-  ServerError.prototype.expose = false
-
-  return ServerError
-}
-
-/**
- * Set the name of a function, if possible.
- * @private
- */
-
-function nameFunc (func, name) {
-  var desc = Object.getOwnPropertyDescriptor(func, 'name')
-
-  if (desc && desc.configurable) {
-    desc.value = name
-    Object.defineProperty(func, 'name', desc)
-  }
-}
-
-/**
- * Populate the exports object with constructors for every error class.
- * @private
- */
-
-function populateConstructorExports (exports, codes, HttpError) {
-  codes.forEach(function forEachCode (code) {
-    var CodeError
-    var name = toIdentifier(statuses.message[code])
-
-    switch (codeClass(code)) {
-      case 400:
-        CodeError = createClientErrorConstructor(HttpError, name, code)
-        break
-      case 500:
-        CodeError = createServerErrorConstructor(HttpError, name, code)
-        break
-    }
-
-    if (CodeError) {
-      // export the constructor
-      exports[code] = CodeError
-      exports[name] = CodeError
-    }
-  })
-}
-
-/**
- * Get a class name from a name identifier.
+ * Determine if message is already finished.
  *
- * @param {string} name
- * @returns {string}
+ * @param {object} msg
+ * @return {boolean}
+ * @public
+ */
+
+function isFinished (msg) {
+  var socket = msg.socket
+
+  if (typeof msg.finished === 'boolean') {
+    // OutgoingMessage
+    return Boolean(msg.finished || (socket && !socket.writable))
+  }
+
+  if (typeof msg.complete === 'boolean') {
+    // IncomingMessage
+    return Boolean(msg.upgrade || !socket || !socket.readable || (msg.complete && !msg.readable))
+  }
+
+  // don't know
+  return undefined
+}
+
+/**
+ * Attach a finished listener to the message.
+ *
+ * @param {object} msg
+ * @param {function} callback
  * @private
  */
 
-function toClassName (name) {
-  return name.slice(-5) === 'Error' ? name : name + 'Error'
+function attachFinishedListener (msg, callback) {
+  var eeMsg
+  var eeSocket
+  var finished = false
+
+  function onFinish (error) {
+    eeMsg.cancel()
+    eeSocket.cancel()
+
+    finished = true
+    callback(error)
+  }
+
+  // finished on first message event
+  eeMsg = eeSocket = first([[msg, 'end', 'finish']], onFinish)
+
+  function onSocket (socket) {
+    // remove listener
+    msg.removeListener('socket', onSocket)
+
+    if (finished) return
+    if (eeMsg !== eeSocket) return
+
+    // finished on first socket event
+    eeSocket = first([[socket, 'error', 'close']], onFinish)
+  }
+
+  if (msg.socket) {
+    // socket already assigned
+    onSocket(msg.socket)
+    return
+  }
+
+  // wait for socket to be assigned
+  msg.on('socket', onSocket)
+
+  if (msg.socket === undefined) {
+    // istanbul ignore next: node.js 0.8 patch
+    patchAssignSocket(msg, onSocket)
+  }
+}
+
+/**
+ * Attach the listener to the message.
+ *
+ * @param {object} msg
+ * @return {function}
+ * @private
+ */
+
+function attachListener (msg, listener) {
+  var attached = msg.__onFinished
+
+  // create a private single listener with queue
+  if (!attached || !attached.queue) {
+    attached = msg.__onFinished = createListener(msg)
+    attachFinishedListener(msg, attached)
+  }
+
+  attached.queue.push(listener)
+}
+
+/**
+ * Create listener on message.
+ *
+ * @param {object} msg
+ * @return {function}
+ * @private
+ */
+
+function createListener (msg) {
+  function listener (err) {
+    if (msg.__onFinished === listener) msg.__onFinished = null
+    if (!listener.queue) return
+
+    var queue = listener.queue
+    listener.queue = null
+
+    for (var i = 0; i < queue.length; i++) {
+      queue[i](err, msg)
+    }
+  }
+
+  listener.queue = []
+
+  return listener
+}
+
+/**
+ * Patch ServerResponse.prototype.assignSocket for node.js 0.8.
+ *
+ * @param {ServerResponse} res
+ * @param {function} callback
+ * @private
+ */
+
+// istanbul ignore next: node.js 0.8 patch
+function patchAssignSocket (res, callback) {
+  var assignSocket = res.assignSocket
+
+  if (typeof assignSocket !== 'function') return
+
+  // res.on('socket', callback) is broken in 0.8
+  res.assignSocket = function _assignSocket (socket) {
+    assignSocket.call(this, socket)
+    callback(socket)
+  }
+}
+
+/**
+ * Try to require async_hooks
+ * @private
+ */
+
+function tryRequireAsyncHooks () {
+  try {
+    return require('async_hooks')
+  } catch (e) {
+    return {}
+  }
+}
+
+/**
+ * Wrap function with async resource, if possible.
+ * AsyncResource.bind static method backported.
+ * @private
+ */
+
+function wrap (fn) {
+  var res
+
+  // create anonymous resource
+  if (asyncHooks.AsyncResource) {
+    res = new asyncHooks.AsyncResource(fn.name || 'bound-anonymous-fn')
+  }
+
+  // incompatible node.js
+  if (!res || !res.runInAsyncScope) {
+    return fn
+  }
+
+  // return bound function
+  return res.runInAsyncScope.bind(res, fn, null)
 }
