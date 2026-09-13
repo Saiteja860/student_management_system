@@ -1,58 +1,54 @@
-# Student Management System (Full Stack)
+# dunder-proto <sup>[![Version Badge][npm-version-svg]][package-url]</sup>
 
-A full-stack Student Management System: Node.js + Express backend with a REST API,
-and a vanilla HTML/CSS/JS frontend that talks to it over `fetch`.
+[![github actions][actions-image]][actions-url]
+[![coverage][codecov-image]][codecov-url]
+[![License][license-image]][license-url]
+[![Downloads][downloads-image]][downloads-url]
 
-## Stack
-- **Backend:** Node.js, Express
-- **Storage:** `data.json` (a JSON file acting as the database — easy to swap for
-  SQLite/MySQL/MongoDB later since all reads/writes go through `readDB()`/`writeDB()`
-  in `server.js`)
-- **Frontend:** Plain HTML/CSS/JS served from the `public/` folder, no framework or build step
+[![npm badge][npm-badge-png]][package-url]
 
-## Project structure
-```
-sms-backend/
-├── server.js          Express server + REST API routes
-├── data.json           Data store (students, attendance, marks, fees)
-├── package.json
-└── public/
-    ├── index.html       App shell
-    ├── style.css        Styling
-    └── script.js        Frontend logic (calls the API)
+If available, the `Object.prototype.__proto__` accessor and mutator, call-bound.
+
+## Getting started
+
+```sh
+npm install --save dunder-proto
 ```
 
-## Setup
+## Usage/Examples
 
-1. Make sure [Node.js](https://nodejs.org) is installed (v16+).
-2. In this folder, install dependencies:
-   ```
-   npm install
-   ```
-3. Start the server:
-   ```
-   npm start
-   ```
-4. Open **http://localhost:3000** in your browser.
+```js
+const assert = require('assert');
+const getDunder = require('dunder-proto/get');
+const setDunder = require('dunder-proto/set');
 
-## API endpoints
+const obj = {};
 
-| Method | Endpoint                        | Description                     |
-|--------|----------------------------------|----------------------------------|
-| GET    | `/api/students`                 | List all students               |
-| POST   | `/api/students`                 | Add a student                   |
-| PUT    | `/api/students/:id`              | Update a student                |
-| DELETE | `/api/students/:id`              | Remove a student                |
-| GET    | `/api/attendance/:date`          | Get attendance for a date       |
-| POST   | `/api/attendance/:date`          | Mark attendance (`studentId`, `status`) |
-| GET    | `/api/marks`                     | Get all marks + subject list    |
-| POST   | `/api/marks`                     | Set a mark (`studentId`, `subject`, `score`) |
-| GET    | `/api/fees`                      | Get fee records                 |
-| POST   | `/api/fees/:studentId/pay`       | Mark a student's fees fully paid |
+assert.equal('toString' in obj, true);
+assert.equal(getDunder(obj), Object.prototype);
 
-## Notes for extending this as a college project
-- Swap `data.json` for a real database (SQLite is the easiest first step — same
-  file-based simplicity, real query power) without changing the frontend at all.
-- Add authentication (e.g. `express-session` or JWT) to separate Admin/Teacher/Student roles.
-- Add input validation (e.g. `express-validator`) on the API routes.
-- Add a `.gitignore` with `node_modules/` before pushing to GitHub.
+setDunder(obj, null);
+
+assert.equal('toString' in obj, false);
+assert.equal(getDunder(obj), null);
+```
+
+## Tests
+
+Clone the repo, `npm install`, and run `npm test`
+
+[package-url]: https://npmjs.org/package/dunder-proto
+[npm-version-svg]: https://versionbadg.es/es-shims/dunder-proto.svg
+[deps-svg]: https://david-dm.org/es-shims/dunder-proto.svg
+[deps-url]: https://david-dm.org/es-shims/dunder-proto
+[dev-deps-svg]: https://david-dm.org/es-shims/dunder-proto/dev-status.svg
+[dev-deps-url]: https://david-dm.org/es-shims/dunder-proto#info=devDependencies
+[npm-badge-png]: https://nodei.co/npm/dunder-proto.png?downloads=true&stars=true
+[license-image]: https://img.shields.io/npm/l/dunder-proto.svg
+[license-url]: LICENSE
+[downloads-image]: https://img.shields.io/npm/dm/dunder-proto.svg
+[downloads-url]: https://npm-stat.com/charts.html?package=dunder-proto
+[codecov-image]: https://codecov.io/gh/es-shims/dunder-proto/branch/main/graphs/badge.svg
+[codecov-url]: https://app.codecov.io/gh/es-shims/dunder-proto/
+[actions-image]: https://img.shields.io/endpoint?url=https://github-actions-badge-u3jn4tfpocch.runkit.sh/es-shims/dunder-proto
+[actions-url]: https://github.com/es-shims/dunder-proto/actions
