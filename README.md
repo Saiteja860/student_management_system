@@ -1,203 +1,223 @@
-# negotiator
+# raw-body
 
 [![NPM Version][npm-image]][npm-url]
 [![NPM Downloads][downloads-image]][downloads-url]
 [![Node.js Version][node-version-image]][node-version-url]
-[![Build Status][github-actions-ci-image]][github-actions-ci-url]
-[![Test Coverage][coveralls-image]][coveralls-url]
+[![Build status][github-actions-ci-image]][github-actions-ci-url]
+[![Test coverage][coveralls-image]][coveralls-url]
 
-An HTTP content negotiator for Node.js
+Gets the entire buffer of a stream either as a `Buffer` or a string.
+Validates the stream's length against an expected length and maximum limit.
+Ideal for parsing request bodies.
 
-## Installation
+## Install
+
+This is a [Node.js](https://nodejs.org/en/) module available through the
+[npm registry](https://www.npmjs.com/). Installation is done using the
+[`npm install` command](https://docs.npmjs.com/getting-started/installing-npm-packages-locally):
 
 ```sh
-$ npm install negotiator
+$ npm install raw-body
+```
+
+### TypeScript
+
+This module includes a [TypeScript](https://www.typescriptlang.org/)
+declaration file to enable auto complete in compatible editors and type
+information for TypeScript projects. This module depends on the Node.js
+types, so install `@types/node`:
+
+```sh
+$ npm install @types/node
 ```
 
 ## API
 
 ```js
-var Negotiator = require('negotiator')
+var getRawBody = require('raw-body')
 ```
 
-### Accept Negotiation
+### getRawBody(stream, [options], [callback])
+
+**Returns a promise if no callback specified and global `Promise` exists.**
+
+Options:
+
+- `length` - The length of the stream.
+  If the contents of the stream do not add up to this length,
+  an `400` error code is returned.
+- `limit` - The byte limit of the body.
+  This is the number of bytes or any string format supported by
+  [bytes](https://www.npmjs.com/package/bytes),
+  for example `1000`, `'500kb'` or `'3mb'`.
+  If the body ends up being larger than this limit,
+  a `413` error code is returned.
+- `encoding` - The encoding to use to decode the body into a string.
+  By default, a `Buffer` instance will be returned when no encoding is specified.
+  Most likely, you want `utf-8`, so setting `encoding` to `true` will decode as `utf-8`.
+  You can use any type of encoding supported by [iconv-lite](https://www.npmjs.org/package/iconv-lite#readme).
+
+You can also pass a string in place of options to just specify the encoding.
+
+If an error occurs, the stream will be paused, everything unpiped,
+and you are responsible for correctly disposing the stream.
+For HTTP requests, you may need to finish consuming the stream if
+you want to keep the socket open for future requests. For streams
+that use file descriptors, you should `stream.destroy()` or
+`stream.close()` to prevent leaks.
+
+## Errors
+
+This module creates errors depending on the error condition during reading.
+The error may be an error from the underlying Node.js implementation, but is
+otherwise an error created by this module, which has the following attributes:
+
+  * `limit` - the limit in bytes
+  * `length` and `expected` - the expected length of the stream
+  * `received` - the received bytes
+  * `encoding` - the invalid encoding
+  * `status` and `statusCode` - the corresponding status code for the error
+  * `type` - the error type
+
+### Types
+
+The errors from this module have a `type` property which allows for the programmatic
+determination of the type of error returned.
+
+#### encoding.unsupported
+
+This error will occur when the `encoding` option is specified, but the value does
+not map to an encoding supported by the [iconv-lite](https://www.npmjs.org/package/iconv-lite#readme)
+module.
+
+#### entity.too.large
+
+This error will occur when the `limit` option is specified, but the stream has
+an entity that is larger.
+
+#### request.aborted
+
+This error will occur when the request stream is aborted by the client before
+reading the body has finished.
+
+#### request.size.invalid
+
+This error will occur when the `length` option is specified, but the stream has
+emitted more bytes.
+
+#### stream.encoding.set
+
+This error will occur when the given stream has an encoding set on it, making it
+a decoded stream. The stream should not have an encoding set and is expected to
+emit `Buffer` objects.
+
+#### stream.not.readable
+
+This error will occur when the given stream is not readable.
+
+## Examples
+
+### Simple Express example
 
 ```js
-availableMediaTypes = ['text/html', 'text/plain', 'application/json']
+var contentType = require('content-type')
+var express = require('express')
+var getRawBody = require('raw-body')
 
-// The negotiator constructor receives a request object
-negotiator = new Negotiator(request)
+var app = express()
 
-// Let's say Accept header is 'text/html, application/*;q=0.2, image/jpeg;q=0.8'
+app.use(function (req, res, next) {
+  getRawBody(req, {
+    length: req.headers['content-length'],
+    limit: '1mb',
+    encoding: contentType.parse(req).parameters.charset
+  }, function (err, string) {
+    if (err) return next(err)
+    req.text = string
+    next()
+  })
+})
 
-negotiator.mediaTypes()
-// -> ['text/html', 'image/jpeg', 'application/*']
-
-negotiator.mediaTypes(availableMediaTypes)
-// -> ['text/html', 'application/json']
-
-negotiator.mediaType(availableMediaTypes)
-// -> 'text/html'
+// now access req.text
 ```
 
-You can check a working example at `examples/accept.js`.
-
-#### Methods
-
-##### mediaType()
-
-Returns the most preferred media type from the client.
-
-##### mediaType(availableMediaType)
-
-Returns the most preferred media type from a list of available media types.
-
-##### mediaTypes()
-
-Returns an array of preferred media types ordered by the client preference.
-
-##### mediaTypes(availableMediaTypes)
-
-Returns an array of preferred media types ordered by priority from a list of
-available media types.
-
-### Accept-Language Negotiation
+### Simple Koa example
 
 ```js
-negotiator = new Negotiator(request)
+var contentType = require('content-type')
+var getRawBody = require('raw-body')
+var koa = require('koa')
 
-availableLanguages = ['en', 'es', 'fr']
+var app = koa()
 
-// Let's say Accept-Language header is 'en;q=0.8, es, pt'
+app.use(function * (next) {
+  this.text = yield getRawBody(this.req, {
+    length: this.req.headers['content-length'],
+    limit: '1mb',
+    encoding: contentType.parse(this.req).parameters.charset
+  })
+  yield next
+})
 
-negotiator.languages()
-// -> ['es', 'pt', 'en']
-
-negotiator.languages(availableLanguages)
-// -> ['es', 'en']
-
-language = negotiator.language(availableLanguages)
-// -> 'es'
+// now access this.text
 ```
 
-You can check a working example at `examples/language.js`.
+### Using as a promise
 
-#### Methods
-
-##### language()
-
-Returns the most preferred language from the client.
-
-##### language(availableLanguages)
-
-Returns the most preferred language from a list of available languages.
-
-##### languages()
-
-Returns an array of preferred languages ordered by the client preference.
-
-##### languages(availableLanguages)
-
-Returns an array of preferred languages ordered by priority from a list of
-available languages.
-
-### Accept-Charset Negotiation
+To use this library as a promise, simply omit the `callback` and a promise is
+returned, provided that a global `Promise` is defined.
 
 ```js
-availableCharsets = ['utf-8', 'iso-8859-1', 'iso-8859-5']
+var getRawBody = require('raw-body')
+var http = require('http')
 
-negotiator = new Negotiator(request)
+var server = http.createServer(function (req, res) {
+  getRawBody(req)
+    .then(function (buf) {
+      res.statusCode = 200
+      res.end(buf.length + ' bytes submitted')
+    })
+    .catch(function (err) {
+      res.statusCode = 500
+      res.end(err.message)
+    })
+})
 
-// Let's say Accept-Charset header is 'utf-8, iso-8859-1;q=0.8, utf-7;q=0.2'
-
-negotiator.charsets()
-// -> ['utf-8', 'iso-8859-1', 'utf-7']
-
-negotiator.charsets(availableCharsets)
-// -> ['utf-8', 'iso-8859-1']
-
-negotiator.charset(availableCharsets)
-// -> 'utf-8'
+server.listen(3000)
 ```
 
-You can check a working example at `examples/charset.js`.
+### Using with TypeScript
 
-#### Methods
+```ts
+import * as getRawBody from 'raw-body';
+import * as http from 'http';
 
-##### charset()
+const server = http.createServer((req, res) => {
+  getRawBody(req)
+  .then((buf) => {
+    res.statusCode = 200;
+    res.end(buf.length + ' bytes submitted');
+  })
+  .catch((err) => {
+    res.statusCode = err.statusCode;
+    res.end(err.message);
+  });
+});
 
-Returns the most preferred charset from the client.
-
-##### charset(availableCharsets)
-
-Returns the most preferred charset from a list of available charsets.
-
-##### charsets()
-
-Returns an array of preferred charsets ordered by the client preference.
-
-##### charsets(availableCharsets)
-
-Returns an array of preferred charsets ordered by priority from a list of
-available charsets.
-
-### Accept-Encoding Negotiation
-
-```js
-availableEncodings = ['identity', 'gzip']
-
-negotiator = new Negotiator(request)
-
-// Let's say Accept-Encoding header is 'gzip, compress;q=0.2, identity;q=0.5'
-
-negotiator.encodings()
-// -> ['gzip', 'identity', 'compress']
-
-negotiator.encodings(availableEncodings)
-// -> ['gzip', 'identity']
-
-negotiator.encoding(availableEncodings)
-// -> 'gzip'
+server.listen(3000);
 ```
-
-You can check a working example at `examples/encoding.js`.
-
-#### Methods
-
-##### encoding()
-
-Returns the most preferred encoding from the client.
-
-##### encoding(availableEncodings)
-
-Returns the most preferred encoding from a list of available encodings.
-
-##### encodings()
-
-Returns an array of preferred encodings ordered by the client preference.
-
-##### encodings(availableEncodings)
-
-Returns an array of preferred encodings ordered by priority from a list of
-available encodings.
-
-## See Also
-
-The [accepts](https://npmjs.org/package/accepts#readme) module builds on
-this module and provides an alternative interface, mime type validation,
-and more.
 
 ## License
 
 [MIT](LICENSE)
 
-[npm-image]: https://img.shields.io/npm/v/negotiator.svg
-[npm-url]: https://npmjs.org/package/negotiator
-[node-version-image]: https://img.shields.io/node/v/negotiator.svg
+[npm-image]: https://img.shields.io/npm/v/raw-body.svg
+[npm-url]: https://npmjs.org/package/raw-body
+[node-version-image]: https://img.shields.io/node/v/raw-body.svg
 [node-version-url]: https://nodejs.org/en/download/
-[coveralls-image]: https://img.shields.io/coveralls/jshttp/negotiator/master.svg
-[coveralls-url]: https://coveralls.io/r/jshttp/negotiator?branch=master
-[downloads-image]: https://img.shields.io/npm/dm/negotiator.svg
-[downloads-url]: https://npmjs.org/package/negotiator
-[github-actions-ci-image]: https://img.shields.io/github/workflow/status/jshttp/negotiator/ci/master?label=ci
-[github-actions-ci-url]: https://github.com/jshttp/negotiator/actions/workflows/ci.yml
+[coveralls-image]: https://img.shields.io/coveralls/stream-utils/raw-body/master.svg
+[coveralls-url]: https://coveralls.io/r/stream-utils/raw-body?branch=master
+[downloads-image]: https://img.shields.io/npm/dm/raw-body.svg
+[downloads-url]: https://npmjs.org/package/raw-body
+[github-actions-ci-image]: https://img.shields.io/github/actions/workflow/status/stream-utils/raw-body/ci.yml?branch=master&label=ci
+[github-actions-ci-url]: https://github.com/jshttp/stream-utils/raw-body?query=workflow%3Aci
