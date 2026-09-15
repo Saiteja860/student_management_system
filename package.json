@@ -1,49 +1,43 @@
 {
-  "name": "statuses",
-  "description": "HTTP status utility",
-  "version": "2.0.2",
-  "contributors": [
-    "Douglas Christopher Wilson <doug@somethingdoug.com>",
-    "Jonathan Ong <me@jongleberry.com> (http://jongleberry.com)"
-  ],
-  "repository": "jshttp/statuses",
+  "name": "vary",
+  "description": "Manipulate the HTTP Vary header",
+  "version": "1.1.2",
+  "author": "Douglas Christopher Wilson <doug@somethingdoug.com>",
   "license": "MIT",
   "keywords": [
     "http",
-    "status",
-    "code"
+    "res",
+    "vary"
   ],
+  "repository": "jshttp/vary",
+  "devDependencies": {
+    "beautify-benchmark": "0.2.4",
+    "benchmark": "2.1.4",
+    "eslint": "3.19.0",
+    "eslint-config-standard": "10.2.1",
+    "eslint-plugin-import": "2.7.0",
+    "eslint-plugin-markdown": "1.0.0-beta.6",
+    "eslint-plugin-node": "5.1.1",
+    "eslint-plugin-promise": "3.5.0",
+    "eslint-plugin-standard": "3.0.1",
+    "istanbul": "0.4.5",
+    "mocha": "2.5.3",
+    "supertest": "1.1.0"
+  },
   "files": [
     "HISTORY.md",
-    "index.js",
-    "codes.json",
-    "LICENSE"
+    "LICENSE",
+    "README.md",
+    "index.js"
   ],
-  "devDependencies": {
-    "csv-parse": "4.16.3",
-    "eslint": "7.19.0",
-    "eslint-config-standard": "14.1.1",
-    "eslint-plugin-import": "2.31.0",
-    "eslint-plugin-markdown": "1.0.2",
-    "eslint-plugin-node": "11.1.0",
-    "eslint-plugin-promise": "4.3.1",
-    "eslint-plugin-standard": "4.1.0",
-    "mocha": "8.4.0",
-    "nyc": "15.1.0",
-    "raw-body": "2.5.2",
-    "stream-to-array": "2.3.0"
-  },
   "engines": {
     "node": ">= 0.8"
   },
   "scripts": {
-    "build": "node scripts/build.js",
-    "fetch": "node scripts/fetch-apache.js && node scripts/fetch-iana.js && node scripts/fetch-nginx.js && node scripts/fetch-node.js",
+    "bench": "node benchmark/index.js",
     "lint": "eslint --plugin markdown --ext js,md .",
-    "test": "mocha --reporter spec --check-leaks --bail test/",
-    "test-ci": "nyc --reporter=lcov --reporter=text npm test",
-    "test-cov": "nyc --reporter=html --reporter=text npm test",
-    "update": "npm run fetch && npm run build",
-    "version": "node scripts/version-history.js && git add HISTORY.md"
+    "test": "mocha --reporter spec --bail --check-leaks test/",
+    "test-cov": "istanbul cover node_modules/mocha/bin/_mocha -- --reporter dot --check-leaks test/",
+    "test-travis": "istanbul cover node_modules/mocha/bin/_mocha --report lcovonly -- --reporter spec --check-leaks test/"
   }
 }

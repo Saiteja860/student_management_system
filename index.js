@@ -1,146 +1,149 @@
 /*!
- * statuses
- * Copyright(c) 2014 Jonathan Ong
- * Copyright(c) 2016 Douglas Christopher Wilson
+ * vary
+ * Copyright(c) 2014-2017 Douglas Christopher Wilson
  * MIT Licensed
  */
 
 'use strict'
 
 /**
- * Module dependencies.
- * @private
- */
-
-var codes = require('./codes.json')
-
-/**
  * Module exports.
+ */
+
+module.exports = vary
+module.exports.append = append
+
+/**
+ * RegExp to match field-name in RFC 7230 sec 3.2
+ *
+ * field-name    = token
+ * token         = 1*tchar
+ * tchar         = "!" / "#" / "$" / "%" / "&" / "'" / "*"
+ *               / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
+ *               / DIGIT / ALPHA
+ *               ; any VCHAR, except delimiters
+ */
+
+var FIELD_NAME_REGEXP = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
+
+/**
+ * Append a field to a vary header.
+ *
+ * @param {String} header
+ * @param {String|Array} field
+ * @return {String}
  * @public
  */
 
-module.exports = status
-
-// status code to message map
-status.message = codes
-
-// status message (lower-case) to code map
-status.code = createMessageToStatusCodeMap(codes)
-
-// array of status codes
-status.codes = createStatusCodeList(codes)
-
-// status codes for redirects
-status.redirect = {
-  300: true,
-  301: true,
-  302: true,
-  303: true,
-  305: true,
-  307: true,
-  308: true
-}
-
-// status codes for empty bodies
-status.empty = {
-  204: true,
-  205: true,
-  304: true
-}
-
-// status codes for when you should retry the request
-status.retry = {
-  502: true,
-  503: true,
-  504: true
-}
-
-/**
- * Create a map of message to status code.
- * @private
- */
-
-function createMessageToStatusCodeMap (codes) {
-  var map = {}
-
-  Object.keys(codes).forEach(function forEachCode (code) {
-    var message = codes[code]
-    var status = Number(code)
-
-    // populate map
-    map[message.toLowerCase()] = status
-  })
-
-  return map
-}
-
-/**
- * Create a list of all status codes.
- * @private
- */
-
-function createStatusCodeList (codes) {
-  return Object.keys(codes).map(function mapCode (code) {
-    return Number(code)
-  })
-}
-
-/**
- * Get the status code for given message.
- * @private
- */
-
-function getStatusCode (message) {
-  var msg = message.toLowerCase()
-
-  if (!Object.prototype.hasOwnProperty.call(status.code, msg)) {
-    throw new Error('invalid status message: "' + message + '"')
+function append (header, field) {
+  if (typeof header !== 'string') {
+    throw new TypeError('header argument is required')
   }
 
-  return status.code[msg]
+  if (!field) {
+    throw new TypeError('field argument is required')
+  }
+
+  // get fields array
+  var fields = !Array.isArray(field)
+    ? parse(String(field))
+    : field
+
+  // assert on invalid field names
+  for (var j = 0; j < fields.length; j++) {
+    if (!FIELD_NAME_REGEXP.test(fields[j])) {
+      throw new TypeError('field argument contains an invalid header name')
+    }
+  }
+
+  // existing, unspecified vary
+  if (header === '*') {
+    return header
+  }
+
+  // enumerate current values
+  var val = header
+  var vals = parse(header.toLowerCase())
+
+  // unspecified vary
+  if (fields.indexOf('*') !== -1 || vals.indexOf('*') !== -1) {
+    return '*'
+  }
+
+  for (var i = 0; i < fields.length; i++) {
+    var fld = fields[i].toLowerCase()
+
+    // append value (case-preserving)
+    if (vals.indexOf(fld) === -1) {
+      vals.push(fld)
+      val = val
+        ? val + ', ' + fields[i]
+        : fields[i]
+    }
+  }
+
+  return val
 }
 
 /**
- * Get the status message for given code.
+ * Parse a vary header into an array.
+ *
+ * @param {String} header
+ * @return {Array}
  * @private
  */
 
-function getStatusMessage (code) {
-  if (!Object.prototype.hasOwnProperty.call(status.message, code)) {
-    throw new Error('invalid status code: ' + code)
+function parse (header) {
+  var end = 0
+  var list = []
+  var start = 0
+
+  // gather tokens
+  for (var i = 0, len = header.length; i < len; i++) {
+    switch (header.charCodeAt(i)) {
+      case 0x20: /*   */
+        if (start === end) {
+          start = end = i + 1
+        }
+        break
+      case 0x2c: /* , */
+        list.push(header.substring(start, end))
+        start = end = i + 1
+        break
+      default:
+        end = i + 1
+        break
+    }
   }
 
-  return status.message[code]
+  // final token
+  list.push(header.substring(start, end))
+
+  return list
 }
 
 /**
- * Get the status code.
+ * Mark that a request is varied on a header field.
  *
- * Given a number, this will throw if it is not a known status
- * code, otherwise the code will be returned. Given a string,
- * the string will be parsed for a number and return the code
- * if valid, otherwise will lookup the code assuming this is
- * the status message.
- *
- * @param {string|number} code
- * @returns {number}
+ * @param {Object} res
+ * @param {String|Array} field
  * @public
  */
 
-function status (code) {
-  if (typeof code === 'number') {
-    return getStatusMessage(code)
+function vary (res, field) {
+  if (!res || !res.getHeader || !res.setHeader) {
+    // quack quack
+    throw new TypeError('res argument is required')
   }
 
-  if (typeof code !== 'string') {
-    throw new TypeError('code must be a number or string')
-  }
+  // get existing header
+  var val = res.getHeader('Vary') || ''
+  var header = Array.isArray(val)
+    ? val.join(', ')
+    : String(val)
 
-  // '403'
-  var n = parseInt(code, 10)
-  if (!isNaN(n)) {
-    return getStatusMessage(n)
+  // set new header
+  if ((val = append(header, field))) {
+    res.setHeader('Vary', val)
   }
-
-  return getStatusCode(code)
 }
