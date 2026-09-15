@@ -1,234 +1,82 @@
 /*!
- * on-finished
- * Copyright(c) 2013 Jonathan Ong
- * Copyright(c) 2014 Douglas Christopher Wilson
+ * negotiator
+ * Copyright(c) 2012 Federico Romero
+ * Copyright(c) 2012-2014 Isaac Z. Schlueter
+ * Copyright(c) 2015 Douglas Christopher Wilson
  * MIT Licensed
  */
 
-'use strict'
+'use strict';
+
+var preferredCharsets = require('./lib/charset')
+var preferredEncodings = require('./lib/encoding')
+var preferredLanguages = require('./lib/language')
+var preferredMediaTypes = require('./lib/mediaType')
 
 /**
  * Module exports.
  * @public
  */
 
-module.exports = onFinished
-module.exports.isFinished = isFinished
+module.exports = Negotiator;
+module.exports.Negotiator = Negotiator;
 
 /**
- * Module dependencies.
- * @private
- */
-
-var asyncHooks = tryRequireAsyncHooks()
-var first = require('ee-first')
-
-/**
- * Variables.
- * @private
- */
-
-/* istanbul ignore next */
-var defer = typeof setImmediate === 'function'
-  ? setImmediate
-  : function (fn) { process.nextTick(fn.bind.apply(fn, arguments)) }
-
-/**
- * Invoke callback when the response has finished, useful for
- * cleaning up resources afterwards.
- *
- * @param {object} msg
- * @param {function} listener
- * @return {object}
+ * Create a Negotiator instance from a request.
+ * @param {object} request
  * @public
  */
 
-function onFinished (msg, listener) {
-  if (isFinished(msg) !== false) {
-    defer(listener, null, msg)
-    return msg
+function Negotiator(request) {
+  if (!(this instanceof Negotiator)) {
+    return new Negotiator(request);
   }
 
-  // attach the listener to the message
-  attachListener(msg, wrap(listener))
-
-  return msg
+  this.request = request;
 }
 
-/**
- * Determine if message is already finished.
- *
- * @param {object} msg
- * @return {boolean}
- * @public
- */
+Negotiator.prototype.charset = function charset(available) {
+  var set = this.charsets(available);
+  return set && set[0];
+};
 
-function isFinished (msg) {
-  var socket = msg.socket
+Negotiator.prototype.charsets = function charsets(available) {
+  return preferredCharsets(this.request.headers['accept-charset'], available);
+};
 
-  if (typeof msg.finished === 'boolean') {
-    // OutgoingMessage
-    return Boolean(msg.finished || (socket && !socket.writable))
-  }
+Negotiator.prototype.encoding = function encoding(available) {
+  var set = this.encodings(available);
+  return set && set[0];
+};
 
-  if (typeof msg.complete === 'boolean') {
-    // IncomingMessage
-    return Boolean(msg.upgrade || !socket || !socket.readable || (msg.complete && !msg.readable))
-  }
+Negotiator.prototype.encodings = function encodings(available) {
+  return preferredEncodings(this.request.headers['accept-encoding'], available);
+};
 
-  // don't know
-  return undefined
-}
+Negotiator.prototype.language = function language(available) {
+  var set = this.languages(available);
+  return set && set[0];
+};
 
-/**
- * Attach a finished listener to the message.
- *
- * @param {object} msg
- * @param {function} callback
- * @private
- */
+Negotiator.prototype.languages = function languages(available) {
+  return preferredLanguages(this.request.headers['accept-language'], available);
+};
 
-function attachFinishedListener (msg, callback) {
-  var eeMsg
-  var eeSocket
-  var finished = false
+Negotiator.prototype.mediaType = function mediaType(available) {
+  var set = this.mediaTypes(available);
+  return set && set[0];
+};
 
-  function onFinish (error) {
-    eeMsg.cancel()
-    eeSocket.cancel()
+Negotiator.prototype.mediaTypes = function mediaTypes(available) {
+  return preferredMediaTypes(this.request.headers.accept, available);
+};
 
-    finished = true
-    callback(error)
-  }
-
-  // finished on first message event
-  eeMsg = eeSocket = first([[msg, 'end', 'finish']], onFinish)
-
-  function onSocket (socket) {
-    // remove listener
-    msg.removeListener('socket', onSocket)
-
-    if (finished) return
-    if (eeMsg !== eeSocket) return
-
-    // finished on first socket event
-    eeSocket = first([[socket, 'error', 'close']], onFinish)
-  }
-
-  if (msg.socket) {
-    // socket already assigned
-    onSocket(msg.socket)
-    return
-  }
-
-  // wait for socket to be assigned
-  msg.on('socket', onSocket)
-
-  if (msg.socket === undefined) {
-    // istanbul ignore next: node.js 0.8 patch
-    patchAssignSocket(msg, onSocket)
-  }
-}
-
-/**
- * Attach the listener to the message.
- *
- * @param {object} msg
- * @return {function}
- * @private
- */
-
-function attachListener (msg, listener) {
-  var attached = msg.__onFinished
-
-  // create a private single listener with queue
-  if (!attached || !attached.queue) {
-    attached = msg.__onFinished = createListener(msg)
-    attachFinishedListener(msg, attached)
-  }
-
-  attached.queue.push(listener)
-}
-
-/**
- * Create listener on message.
- *
- * @param {object} msg
- * @return {function}
- * @private
- */
-
-function createListener (msg) {
-  function listener (err) {
-    if (msg.__onFinished === listener) msg.__onFinished = null
-    if (!listener.queue) return
-
-    var queue = listener.queue
-    listener.queue = null
-
-    for (var i = 0; i < queue.length; i++) {
-      queue[i](err, msg)
-    }
-  }
-
-  listener.queue = []
-
-  return listener
-}
-
-/**
- * Patch ServerResponse.prototype.assignSocket for node.js 0.8.
- *
- * @param {ServerResponse} res
- * @param {function} callback
- * @private
- */
-
-// istanbul ignore next: node.js 0.8 patch
-function patchAssignSocket (res, callback) {
-  var assignSocket = res.assignSocket
-
-  if (typeof assignSocket !== 'function') return
-
-  // res.on('socket', callback) is broken in 0.8
-  res.assignSocket = function _assignSocket (socket) {
-    assignSocket.call(this, socket)
-    callback(socket)
-  }
-}
-
-/**
- * Try to require async_hooks
- * @private
- */
-
-function tryRequireAsyncHooks () {
-  try {
-    return require('async_hooks')
-  } catch (e) {
-    return {}
-  }
-}
-
-/**
- * Wrap function with async resource, if possible.
- * AsyncResource.bind static method backported.
- * @private
- */
-
-function wrap (fn) {
-  var res
-
-  // create anonymous resource
-  if (asyncHooks.AsyncResource) {
-    res = new asyncHooks.AsyncResource(fn.name || 'bound-anonymous-fn')
-  }
-
-  // incompatible node.js
-  if (!res || !res.runInAsyncScope) {
-    return fn
-  }
-
-  // return bound function
-  return res.runInAsyncScope.bind(res, fn, null)
-}
+// Backwards compatibility
+Negotiator.prototype.preferredCharset = Negotiator.prototype.charset;
+Negotiator.prototype.preferredCharsets = Negotiator.prototype.charsets;
+Negotiator.prototype.preferredEncoding = Negotiator.prototype.encoding;
+Negotiator.prototype.preferredEncodings = Negotiator.prototype.encodings;
+Negotiator.prototype.preferredLanguage = Negotiator.prototype.language;
+Negotiator.prototype.preferredLanguages = Negotiator.prototype.languages;
+Negotiator.prototype.preferredMediaType = Negotiator.prototype.mediaType;
+Negotiator.prototype.preferredMediaTypes = Negotiator.prototype.mediaTypes;

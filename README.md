@@ -1,162 +1,203 @@
-# on-finished
+# negotiator
 
-[![NPM Version][npm-version-image]][npm-url]
-[![NPM Downloads][npm-downloads-image]][npm-url]
-[![Node.js Version][node-image]][node-url]
-[![Build Status][ci-image]][ci-url]
-[![Coverage Status][coveralls-image]][coveralls-url]
+[![NPM Version][npm-image]][npm-url]
+[![NPM Downloads][downloads-image]][downloads-url]
+[![Node.js Version][node-version-image]][node-version-url]
+[![Build Status][github-actions-ci-image]][github-actions-ci-url]
+[![Test Coverage][coveralls-image]][coveralls-url]
 
-Execute a callback when a HTTP request closes, finishes, or errors.
+An HTTP content negotiator for Node.js
 
-## Install
-
-This is a [Node.js](https://nodejs.org/en/) module available through the
-[npm registry](https://www.npmjs.com/). Installation is done using the
-[`npm install` command](https://docs.npmjs.com/getting-started/installing-npm-packages-locally):
+## Installation
 
 ```sh
-$ npm install on-finished
+$ npm install negotiator
 ```
 
 ## API
 
 ```js
-var onFinished = require('on-finished')
+var Negotiator = require('negotiator')
 ```
 
-### onFinished(res, listener)
-
-Attach a listener to listen for the response to finish. The listener will
-be invoked only once when the response finished. If the response finished
-to an error, the first argument will contain the error. If the response
-has already finished, the listener will be invoked.
-
-Listening to the end of a response would be used to close things associated
-with the response, like open files.
-
-Listener is invoked as `listener(err, res)`.
-
-<!-- eslint-disable handle-callback-err -->
+### Accept Negotiation
 
 ```js
-onFinished(res, function (err, res) {
-  // clean up open fds, etc.
-  // err contains the error if request error'd
-})
+availableMediaTypes = ['text/html', 'text/plain', 'application/json']
+
+// The negotiator constructor receives a request object
+negotiator = new Negotiator(request)
+
+// Let's say Accept header is 'text/html, application/*;q=0.2, image/jpeg;q=0.8'
+
+negotiator.mediaTypes()
+// -> ['text/html', 'image/jpeg', 'application/*']
+
+negotiator.mediaTypes(availableMediaTypes)
+// -> ['text/html', 'application/json']
+
+negotiator.mediaType(availableMediaTypes)
+// -> 'text/html'
 ```
 
-### onFinished(req, listener)
+You can check a working example at `examples/accept.js`.
 
-Attach a listener to listen for the request to finish. The listener will
-be invoked only once when the request finished. If the request finished
-to an error, the first argument will contain the error. If the request
-has already finished, the listener will be invoked.
+#### Methods
 
-Listening to the end of a request would be used to know when to continue
-after reading the data.
+##### mediaType()
 
-Listener is invoked as `listener(err, req)`.
+Returns the most preferred media type from the client.
 
-<!-- eslint-disable handle-callback-err -->
+##### mediaType(availableMediaType)
+
+Returns the most preferred media type from a list of available media types.
+
+##### mediaTypes()
+
+Returns an array of preferred media types ordered by the client preference.
+
+##### mediaTypes(availableMediaTypes)
+
+Returns an array of preferred media types ordered by priority from a list of
+available media types.
+
+### Accept-Language Negotiation
 
 ```js
-var data = ''
+negotiator = new Negotiator(request)
 
-req.setEncoding('utf8')
-req.on('data', function (str) {
-  data += str
-})
+availableLanguages = ['en', 'es', 'fr']
 
-onFinished(req, function (err, req) {
-  // data is read unless there is err
-})
+// Let's say Accept-Language header is 'en;q=0.8, es, pt'
+
+negotiator.languages()
+// -> ['es', 'pt', 'en']
+
+negotiator.languages(availableLanguages)
+// -> ['es', 'en']
+
+language = negotiator.language(availableLanguages)
+// -> 'es'
 ```
 
-### onFinished.isFinished(res)
+You can check a working example at `examples/language.js`.
 
-Determine if `res` is already finished. This would be useful to check and
-not even start certain operations if the response has already finished.
+#### Methods
 
-### onFinished.isFinished(req)
+##### language()
 
-Determine if `req` is already finished. This would be useful to check and
-not even start certain operations if the request has already finished.
+Returns the most preferred language from the client.
 
-## Special Node.js requests
+##### language(availableLanguages)
 
-### HTTP CONNECT method
+Returns the most preferred language from a list of available languages.
 
-The meaning of the `CONNECT` method from RFC 7231, section 4.3.6:
+##### languages()
 
-> The CONNECT method requests that the recipient establish a tunnel to
-> the destination origin server identified by the request-target and,
-> if successful, thereafter restrict its behavior to blind forwarding
-> of packets, in both directions, until the tunnel is closed.  Tunnels
-> are commonly used to create an end-to-end virtual connection, through
-> one or more proxies, which can then be secured using TLS (Transport
-> Layer Security, [RFC5246]).
+Returns an array of preferred languages ordered by the client preference.
 
-In Node.js, these request objects come from the `'connect'` event on
-the HTTP server.
+##### languages(availableLanguages)
 
-When this module is used on a HTTP `CONNECT` request, the request is
-considered "finished" immediately, **due to limitations in the Node.js
-interface**. This means if the `CONNECT` request contains a request entity,
-the request will be considered "finished" even before it has been read.
+Returns an array of preferred languages ordered by priority from a list of
+available languages.
 
-There is no such thing as a response object to a `CONNECT` request in
-Node.js, so there is no support for one.
-
-### HTTP Upgrade request
-
-The meaning of the `Upgrade` header from RFC 7230, section 6.1:
-
-> The "Upgrade" header field is intended to provide a simple mechanism
-> for transitioning from HTTP/1.1 to some other protocol on the same
-> connection.
-
-In Node.js, these request objects come from the `'upgrade'` event on
-the HTTP server.
-
-When this module is used on a HTTP request with an `Upgrade` header, the
-request is considered "finished" immediately, **due to limitations in the
-Node.js interface**. This means if the `Upgrade` request contains a request
-entity, the request will be considered "finished" even before it has been
-read.
-
-There is no such thing as a response object to a `Upgrade` request in
-Node.js, so there is no support for one.
-
-## Example
-
-The following code ensures that file descriptors are always closed
-once the response finishes.
+### Accept-Charset Negotiation
 
 ```js
-var destroy = require('destroy')
-var fs = require('fs')
-var http = require('http')
-var onFinished = require('on-finished')
+availableCharsets = ['utf-8', 'iso-8859-1', 'iso-8859-5']
 
-http.createServer(function onRequest (req, res) {
-  var stream = fs.createReadStream('package.json')
-  stream.pipe(res)
-  onFinished(res, function () {
-    destroy(stream)
-  })
-})
+negotiator = new Negotiator(request)
+
+// Let's say Accept-Charset header is 'utf-8, iso-8859-1;q=0.8, utf-7;q=0.2'
+
+negotiator.charsets()
+// -> ['utf-8', 'iso-8859-1', 'utf-7']
+
+negotiator.charsets(availableCharsets)
+// -> ['utf-8', 'iso-8859-1']
+
+negotiator.charset(availableCharsets)
+// -> 'utf-8'
 ```
+
+You can check a working example at `examples/charset.js`.
+
+#### Methods
+
+##### charset()
+
+Returns the most preferred charset from the client.
+
+##### charset(availableCharsets)
+
+Returns the most preferred charset from a list of available charsets.
+
+##### charsets()
+
+Returns an array of preferred charsets ordered by the client preference.
+
+##### charsets(availableCharsets)
+
+Returns an array of preferred charsets ordered by priority from a list of
+available charsets.
+
+### Accept-Encoding Negotiation
+
+```js
+availableEncodings = ['identity', 'gzip']
+
+negotiator = new Negotiator(request)
+
+// Let's say Accept-Encoding header is 'gzip, compress;q=0.2, identity;q=0.5'
+
+negotiator.encodings()
+// -> ['gzip', 'identity', 'compress']
+
+negotiator.encodings(availableEncodings)
+// -> ['gzip', 'identity']
+
+negotiator.encoding(availableEncodings)
+// -> 'gzip'
+```
+
+You can check a working example at `examples/encoding.js`.
+
+#### Methods
+
+##### encoding()
+
+Returns the most preferred encoding from the client.
+
+##### encoding(availableEncodings)
+
+Returns the most preferred encoding from a list of available encodings.
+
+##### encodings()
+
+Returns an array of preferred encodings ordered by the client preference.
+
+##### encodings(availableEncodings)
+
+Returns an array of preferred encodings ordered by priority from a list of
+available encodings.
+
+## See Also
+
+The [accepts](https://npmjs.org/package/accepts#readme) module builds on
+this module and provides an alternative interface, mime type validation,
+and more.
 
 ## License
 
 [MIT](LICENSE)
 
-[ci-image]: https://badgen.net/github/checks/jshttp/on-finished/master?label=ci
-[ci-url]: https://github.com/jshttp/on-finished/actions/workflows/ci.yml
-[coveralls-image]: https://badgen.net/coveralls/c/github/jshttp/on-finished/master
-[coveralls-url]: https://coveralls.io/r/jshttp/on-finished?branch=master
-[node-image]: https://badgen.net/npm/node/on-finished
-[node-url]: https://nodejs.org/en/download
-[npm-downloads-image]: https://badgen.net/npm/dm/on-finished
-[npm-url]: https://npmjs.org/package/on-finished
-[npm-version-image]: https://badgen.net/npm/v/on-finished
+[npm-image]: https://img.shields.io/npm/v/negotiator.svg
+[npm-url]: https://npmjs.org/package/negotiator
+[node-version-image]: https://img.shields.io/node/v/negotiator.svg
+[node-version-url]: https://nodejs.org/en/download/
+[coveralls-image]: https://img.shields.io/coveralls/jshttp/negotiator/master.svg
+[coveralls-url]: https://coveralls.io/r/jshttp/negotiator?branch=master
+[downloads-image]: https://img.shields.io/npm/dm/negotiator.svg
+[downloads-url]: https://npmjs.org/package/negotiator
+[github-actions-ci-image]: https://img.shields.io/github/workflow/status/jshttp/negotiator/ci/master?label=ci
+[github-actions-ci-url]: https://github.com/jshttp/negotiator/actions/workflows/ci.yml
